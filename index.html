@@ -251,7 +251,23 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
 .btn.danger-text:hover { color: var(--danger); }
 
 /* export */
-.export { border-top: 1px solid var(--line); padding: 12px max(16px, env(safe-area-inset-right, 0px)) 14px 16px; display: flex; flex-direction: column; gap: 10px; background: var(--panel); }
+.export-ctl { position: relative; display: flex; align-items: center; flex: none; }
+.split { display: flex; }
+.split .btn.primary:first-child { border-radius: 6px 0 0 6px; }
+.split .btn.caret { width: 26px; padding: 0; border-radius: 0 6px 6px 0; border-left: 1px solid rgba(255, 255, 255, .22); }
+.export-busy { display: flex; align-items: center; gap: 8px; width: 230px; height: 30px; padding: 0 3px 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; }
+.export-busy .progress { flex: 1; min-width: 40px; }
+.export-stage { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.export-x { border: 0; background: transparent; color: var(--muted); width: 24px; height: 24px; border-radius: 5px; cursor: pointer; font-size: 15px; line-height: 1; flex: none; }
+.export-x:hover { background: var(--soft); color: var(--text); }
+.export-menu { left: auto; right: 0; top: calc(100% + 6px); min-width: 250px; }
+.export-menu .menu-item { display: flex; flex-direction: column; gap: 1px; }
+.export-menu .menu-item b { font-weight: 600; }
+.export-menu .menu-item span { font-size: 11.5px; color: var(--muted); }
+.export-note { position: absolute; z-index: 40; top: calc(100% + 8px); right: 0; width: max-content; max-width: min(380px, calc(100vw - 32px)); display: flex; align-items: flex-start; gap: 6px; padding: 7px 4px 7px 11px; border-radius: 8px; border: 1px solid var(--line-strong); background: #fff; box-shadow: 0 10px 28px rgba(16, 24, 16, .14); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.export-note > span { padding-top: 3px; }
+.export-note.ok > span { color: var(--ok); }
+.export-note.err > span { color: var(--danger); }
 .formats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .fmt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; cursor: pointer; background: #fff; text-align: left; min-width: 0; }
 .fmt:hover { border-color: var(--line-strong); }
@@ -263,11 +279,6 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
 .progress { height: 4px; background: var(--line); border-radius: 999px; overflow: hidden; }
 .progress i { display: block; height: 100%; background: var(--accent); width: var(--p, 0%); transition: width .2s; }
 .msg { font-size: 12px; line-height: 1.4; }
-.more-formats > summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; display: inline-flex; align-items: center; gap: 4px; }
-.more-formats > summary::-webkit-details-marker { display: none; }
-.more-formats > summary::before { content: "›"; display: inline-block; transition: transform .15s; }
-.more-formats[open] > summary::before { transform: rotate(90deg); }
-.more-formats[open] { display: flex; flex-direction: column; gap: 8px; }
 .msg.ok { color: var(--ok); }
 .msg.err { color: var(--danger); }
 .row { display: flex; gap: 8px; align-items: center; }
@@ -282,10 +293,13 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
   .viewport { flex: none; height: min(64vw, 62vh); min-height: 220px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   .right { border-left: 0; }
   .right .scroll { overflow: visible; padding-left: max(16px, env(safe-area-inset-left, 0px)); }
-  .export { padding-left: max(16px, env(safe-area-inset-left, 0px)); }
   .top .crumb { display: none; }
 }
 @media (max-width: 520px) {
+  .top { gap: 8px; }
+  .top .chip { padding: 0 8px; }
+  .top .chip .chip-text { display: none; }
+  .export-busy { width: 180px; }
   .tc { min-width: 0; }
   .transport .step { display: none; }
   .stage-tools .seg.small button { padding: 0 6px; }
@@ -3975,7 +3989,7 @@ function ExportPanel({ tid, s, t, w, h, player, desktop }) {
       setMsg({ ok: true, text: `Saved to Movies › Overlay Studio › ${savedPath.split("/").pop()}${size}`, path: savedPath });
     } catch (e) {
       const text = (e && e.message) || String(e);
-      if (ac.signal.aborted || (e && e.name === "AbortError")) setMsg({ ok: false, text: "Export cancelled." });
+      if (ac.signal.aborted || (e && e.name === "AbortError")) setMsg({ ok: true, neutral: true, text: "Export cancelled." });
       else if (text.startsWith("ENOSYS")) { desktop.markBlocked(); setMsg(null); }
       else if (e && e.code === "NO_SWIFT") setMsg({ ok: false, text: "The ProRes encoder needs Apple's developer tools. Open Terminal, run xcode-select --install, then export again." });
       else if (text.startsWith("EPERM")) setMsg({ ok: false, text: "Overlay Studio isn't allowed to save files or run its encoder. Turn full access back on in the app's permissions.", action: "permissions" });
@@ -3985,48 +3999,44 @@ function ExportPanel({ tid, s, t, w, h, player, desktop }) {
     }
   };
 
-  const install = async () => {
-    try {
-      const r = await desktop.api.install.request();
-      if (r === "installed") setMsg({ ok: true, text: "Installing Overlay Studio. Open it from the Dock or Applications to export .mov files." });
-      else if (r !== "cancelled") setMsg({ ok: false, text: "The app couldn't be installed from here. Use Install as app in this artifact's menu in the Claude desktop app." });
-    } catch {
-      setMsg({ ok: false, text: "The app couldn't be installed from here. Use Install as app in this artifact's menu in the Claude desktop app." });
-    }
-  };
+  /* Close the formats menu on an outside click or Escape; a success note hides itself. */
+  const [menu, setMenu] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setMenu(false); };
+    const onKey = (e) => { if (e.key === "Escape") setMenu(false); };
+    document.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown); window.removeEventListener("keydown", onKey); };
+  }, [menu]);
+  useEffect(() => { if (!msg || !msg.ok) return; const id = setTimeout(() => setMsg(null), 6000); return () => clearTimeout(id); }, [msg]);
 
   const secs = (t.total / FPS).toFixed(1);
-  const smallBtn = { height: 26, padding: "0 10px", fontSize: 12 };
-  let main = null, status = null;
-  if (busy) {
-    main = html`<div style=${{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div className="row" style=${{ justifyContent: "space-between" }}><span className="msg">${stage} ${Math.round(progress * 100)}%</span>
-        <button type="button" className="btn ghost" style=${{ height: 26 }} onClick=${() => abortRef.current && abortRef.current.abort()}>Cancel</button></div>
-      <div className="progress"><i style=${{ "--p": `${Math.round(progress * 100)}%` }}></i></div></div>`;
-  } else if (HOSTED) {
-    main = html`<button type="button" className="btn primary block" onClick=${() => run("movweb")}><${Icon} d=${IC.download} size=${15} />Export transparent .mov · ${secs} s</button>`;
-    status = html`<div className="hint">ProRes 4444 with transparency, for Premiere and CapCut. Made in your browser; the first export loads the encoder (about 30 MB).</div>`;
-  } else if (movReady) {
-    main = html`<button type="button" className="btn primary block" onClick=${() => run("mov")}><${Icon} d=${IC.download} size=${15} />Export transparent .mov · ${secs} s</button>`;
-    status = html`<div className="hint">ProRes 4444 with transparency, for Premiere and CapCut. Saved to Movies › Overlay Studio.</div>`;
-  } else {
-    main = html`<a className="btn primary block" href=${WEB_URL} target="_blank" rel="noopener" style=${{ textDecoration: "none" }}><${Icon} d=${IC.download} size=${15} />Export .mov in the web version</a>`;
-    status = html`<div className="hint">Transparent .mov files are made by the same app as a normal web page, at ${WEB_URL.replace("https://", "").replace(/\/$/, "")}. Settings and presets don't carry over.</div>`;
-  }
+  const pct = Math.round(progress * 100);
+  const movFmt = HOSTED ? "movweb" : "mov";
+  const label = stage.replace(/…$/, "").replace(" ProRes 4444", "");
+  const go = (fmt) => { setMenu(false); run(fmt); };
 
-  return html`<div className="export">
-    <div className="rail-head" style=${{ marginBottom: 0 }}><span>Export</span><span style=${{ textTransform: "none", letterSpacing: 0, fontWeight: 500 }}>${w} × ${h} · 25 fps</span></div>
-    ${main}
-    ${status}
-    ${msg && html`<div className=${"msg " + (msg.ok ? "ok" : "err")} role="status">${msg.text}
-      ${msg.path && html` <button type="button" className="btn ghost" style=${{ height: 22, padding: "0 6px", fontSize: 12 }} onClick=${() => desktop.api.shell.showItemInFolder(msg.path).catch(() => {})}>Show in Finder</button>`}
-      ${msg.action === "permissions" && html` <button type="button" className="btn ghost" style=${{ height: 22, padding: "0 6px", fontSize: 12 }} onClick=${() => desktop.api.permissions.manage().then(desktop.recheck).catch(() => {})}>Open permissions</button>`}
-    </div>`}
-    <details className="more-formats">
-      <summary>Other formats</summary>
-      <div className="hint">Transparent WebM${HOSTED ? "" : ", saved as a download"}. Premiere can't read its transparency, and CapCut's support is unconfirmed.</div>
-      <button type="button" className="btn block" disabled=${busy} onClick=${() => run("webm")}>Export WebM · ${secs} s</button>
-    </details>
+  return html`<div className="export-ctl" ref=${wrapRef}>
+    ${busy
+      ? html`<div className="export-busy" role="status" aria-live="polite">
+          <span className="export-stage">${label} ${pct}%</span>
+          <div className="progress"><i style=${{ "--p": `${pct}%` }}></i></div>
+          <button type="button" className="export-x" aria-label="Cancel export" title="Cancel" onClick=${() => abortRef.current && abortRef.current.abort()}>×</button>
+        </div>`
+      : html`<div className="split">
+          <button type="button" className="btn primary" title=${`Transparent ProRes 4444 · ${w} × ${h} · ${secs} s`} onClick=${() => go(movFmt)}><${Icon} d=${IC.download} size=${15} />Export .mov</button>
+          <button type="button" className="btn primary caret" aria-label="More export formats" aria-haspopup="menu" aria-expanded=${menu ? "true" : "false"} onClick=${() => setMenu(!menu)}><${Icon} d=${IC.chevron} size=${14} /></button>
+        </div>`}
+    ${menu && !busy && html`<div className="pop-menu export-menu" role="menu">
+        <button type="button" role="menuitem" className="menu-item" onClick=${() => go(movFmt)}><b>Transparent .mov</b><span>ProRes 4444, for Premiere and CapCut</span></button>
+        <button type="button" role="menuitem" className="menu-item" onClick=${() => go("webm")}><b>WebM</b><span>Premiere can't read its transparency</span></button>
+      </div>`}
+    ${msg && !busy && html`<div className=${"export-note" + (msg.neutral ? "" : msg.ok ? " ok" : " err")} role="status">
+        <span>${msg.text}</span>
+        <button type="button" className="export-x" aria-label="Dismiss" onClick=${() => setMsg(null)}>×</button>
+      </div>`}
   </div>`;
 }
 
@@ -4092,7 +4102,8 @@ function App() {
       <span className="crumb">/ ${T.name}</span>
       <span className="spacer"></span>
       ${fonts && html`<span className=${"chip " + (fontsOk ? "ok" : "warn")} title=${fontsOk ? "P22 Mackinac Pro and Helvetica Neue are installed on this computer" : "Missing: " + missing.join(", ")}>
-        <span className="dot"></span>${fontsOk ? "Brand fonts ready" : `${missing.join(" and ")} missing`}</span>`}
+        <span className="dot"></span><span className="chip-text">${fontsOk ? "Brand fonts ready" : `${missing.join(" and ")} missing`}</span></span>`}
+      <${ExportPanel} tid=${tid} s=${s} t=${t} w=${w} h=${h} player=${player} desktop=${desktop} />
     </header>
 
     <aside className="left" aria-label="Templates and presets">
@@ -4125,7 +4136,6 @@ function App() {
 
     <aside className="right" aria-label="Settings">
       <div className="scroll"><${Inspector} key=${tid} T=${T} s=${s} set=${set} t=${t} setPhase=${setPhase} setMany=${setMany} startPick=${startPick} /></div>
-      <${ExportPanel} tid=${tid} s=${s} t=${t} w=${w} h=${h} player=${player} desktop=${desktop} />
     </aside>
   </div>`;
 }
