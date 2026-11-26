@@ -90,7 +90,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .stage-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .stage-title strong { font-weight: 600; font-size: 13px; }
 .stage-title span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.stage-tools { display: flex; align-items: center; gap: 8px; }
+.stage-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.format-tools { display: flex; align-items: center; gap: 8px; }
+.tool-sep { width: 1px; height: 18px; background: var(--line-strong); }
+.bg-pick { position: relative; }
+.bg-btn { height: 26px; padding: 0 7px 0 8px; font-size: 12px; gap: 6px; }
+.bg-btn svg { color: var(--muted); }
+.bg-dot { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(16, 24, 16, .2); flex: none; }
+.bg-dot.none { background: repeating-conic-gradient(#d4d9d1 0 25%, #fff 0 50%) 0 0 / 8px 8px; }
+.bg-menu { left: auto; right: 0; min-width: 210px; }
+.menu-head { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 6px 8px 4px; }
+.bg-item { display: flex; align-items: center; gap: 8px; }
+.bg-item[aria-checked="true"] { font-weight: 600; }
+.bg-item[aria-checked="true"]::after { content: "✓"; margin-left: auto; color: var(--ok); }
 .viewport { flex: 1; min-height: 0; position: relative; display: grid; place-items: center; padding: 4px 24px 18px; }
 .frame { position: relative; box-shadow: 0 1px 2px rgba(20, 30, 20, .10), 0 10px 30px rgba(20, 30, 20, .14); border-radius: 2px; overflow: hidden; }
 .bg-dark { background: #141614; }
@@ -129,13 +141,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* right inspector */
 .right { grid-area: right; display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-left: 1px solid var(--line); }
 .right .scroll { flex: 1; min-height: 0; overflow: auto; padding: 0 max(16px, env(safe-area-inset-right, 0px)) 8px 16px; }
-.section { border-bottom: 1px solid var(--line); }
-.section:last-child { border-bottom: 0; }
-.section > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; padding: 13px 0 11px; cursor: pointer; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); user-select: none; }
-.section > summary::-webkit-details-marker { display: none; }
-.section > summary svg { transition: transform .15s; }
-.section:not([open]) > summary svg { transform: rotate(-90deg); }
-.section .body { display: grid; grid-template-columns: 1fr 1fr; gap: 13px 10px; padding-bottom: 16px; }
+.tabs { position: sticky; top: 0; z-index: 5; display: flex; background: var(--panel); border-bottom: 1px solid var(--line); margin: 0 -2px; padding-top: 6px; }
+.tabs button { flex: 1 1 0; min-width: 0; height: 38px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; font-size: 12.5px; font-weight: 500; color: var(--muted); cursor: pointer; white-space: nowrap; padding: 0 4px; }
+.tabs button:hover { color: var(--text); }
+.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.tabs button:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--ring); border-radius: 6px 6px 0 0; }
+.tab-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 13px 10px; padding: 16px 0 18px; }
 .field { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .field.half { grid-column: auto; }
 .field.inline { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
@@ -2184,11 +2195,6 @@ function LinesTemplate({ s, f, w, h, t }) {
 /* --------------------------------------------------------------- template registry */
 
 const SHARED_DEFAULTS = { ratio: "16:9", background: "transparent", bgColor: "deep-forest", inPace: 1, hold: 3, outSec: 0.56, animateOut: true };
-const FORMAT_CONTROLS = [
-  { key: "ratio", label: "Aspect ratio", type: "segmented", options: [["16:9", "16:9 Landscape"], ["9:16", "9:16 Portrait"]] },
-  { key: "background", label: "Background", type: "segmented", options: [["transparent", "None"], ["colour", "Colour"]] },
-  { key: "bgColor", label: "Background colour", type: "swatch", showIf: (s) => s.background === "colour" },
-];
 const TIMING_CONTROLS = [
   { key: "inPhase", label: "In", type: "inPhase" },
   { key: "hold", label: "Hold", type: "slider", min: 0.2, max: 8, step: 0.04, unit: "s" },
@@ -3600,28 +3606,34 @@ TEMPLATES.flight.pickAt = (s, x, y, f, w, h, t) => {
   return unmerc(cam.cx + (x - w / 2) / k, cam.cy + (y - h / 2) / k);
 };
 
-const SECTIONS = ["Format", "Content", "Layout", "Style", "Animation"];
+/* The settings sidebar shows one group at a time as tabs; the last tab used is remembered in this
+   browser. Aspect ratio and background live in the bar above the preview (FormatTools). */
+const SECTIONS = ["Content", "Style", "Layout", "Animation"];
+const KEY_TAB = "overlay-studio:v1:tab";
 function Inspector({ T, s, set, t, setPhase, setMany, startPick }) {
   const ctx = { T, t, setPhase, setMany, startPick };
-  const all = [
-    ...FORMAT_CONTROLS.map((c) => ({ ...c, section: "Format" })),
-    ...T.controls,
-    ...TIMING_CONTROLS.map((c) => ({ ...c, section: "Animation" })),
-  ];
-  return SECTIONS.map((sec) => {
-    const cs = all.filter((c) => c.section === sec && (!c.showIf || c.showIf(s)));
-    if (!cs.length) return null;
-    return html`<details key=${sec} className="section" open>
-      <summary>${sec}<${Icon} d=${IC.chevron} size=${14} /></summary>
-      <div className="body">
-        ${cs.map((c) => html`<${Control} key=${c.key} c=${c} s=${s} set=${set} ctx=${ctx} />`)}
-        ${sec === "Animation" && html`<div className=${"readout" + (t.shortened ? " warn" : "")}>
-          <span>${t.shortened ? "Hold shortened to keep the clip at 10 s" : "Clip length (max 10 s)"}</span>
-          <b>${(t.total / FPS).toFixed(2)} s</b></div>
-          <div className="hint" style=${{ gridColumn: "1 / -1" }}>You can also drag the ends of the In, Hold and Out bars under the preview.</div>`}
-      </div>
-    </details>`;
-  });
+  const all = [...T.controls, ...TIMING_CONTROLS.map((c) => ({ ...c, section: "Animation" }))];
+  const groups = SECTIONS.map((sec) => [sec, all.filter((c) => c.section === sec && (!c.showIf || c.showIf(s)))]).filter(([, cs]) => cs.length);
+  const [tab, setTab] = useState(() => readJSON(KEY_TAB, "Content"));
+  const [sec, cs] = groups.find(([g]) => g === tab) || groups[0];
+  const pick = (g) => { setTab(g); writeJSON(KEY_TAB, g); };
+  const onKey = (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const i = groups.findIndex(([g]) => g === sec);
+    const next = groups[(i + (e.key === "ArrowRight" ? 1 : groups.length - 1)) % groups.length][0];
+    pick(next);
+    requestAnimationFrame(() => { const b = document.getElementById("tab-" + next); if (b) b.focus(); });
+  };
+  return html`<div className="tabs" role="tablist" aria-label="Settings">${groups.map(([g]) =>
+      html`<button key=${g} id=${"tab-" + g} type="button" role="tab" aria-selected=${g === sec ? "true" : "false"} aria-controls="tab-panel" tabIndex=${g === sec ? 0 : -1} onClick=${() => pick(g)} onKeyDown=${onKey}>${g}</button>`)}</div>
+    <div className="tab-panel" id="tab-panel" role="tabpanel" aria-labelledby=${"tab-" + sec}>
+      ${cs.map((c) => html`<${Control} key=${c.key} c=${c} s=${s} set=${set} ctx=${ctx} />`)}
+      ${sec === "Animation" && html`<div className=${"readout" + (t.shortened ? " warn" : "")}>
+        <span>${t.shortened ? "Hold shortened to keep the clip at 10 s" : "Clip length (max 10 s)"}</span>
+        <b>${(t.total / FPS).toFixed(2)} s</b></div>
+        <div className="hint" style=${{ gridColumn: "1 / -1" }}>You can also drag the ends of the In, Hold and Out bars under the preview.</div>`}
+    </div>`;
 }
 
 function Presets({ tid, s, presets, setPresets, apply, reset }) {
@@ -4040,6 +4052,35 @@ function ExportPanel({ tid, s, t, w, h, player, desktop }) {
   </div>`;
 }
 
+/* Aspect ratio and the exported background, in the bar above the preview. */
+function FormatTools({ s, set, setMany }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown); window.removeEventListener("keydown", onKey); };
+  }, [open]);
+  const none = s.background !== "colour";
+  const choose = (patch) => { setOpen(false); setMany(patch); };
+  return html`<div className="format-tools">
+    <div className="seg small" role="group" aria-label="Aspect ratio">${[["16:9", "Landscape"], ["9:16", "Portrait"]].map(([val, name]) =>
+      html`<button key=${val} type="button" aria-pressed=${s.ratio === val ? "true" : "false"} title=${name} onClick=${() => set("ratio", val)}>${val}</button>`)}</div>
+    <div className="bg-pick" ref=${ref}>
+      <button type="button" className="btn bg-btn" aria-haspopup="menu" aria-expanded=${open ? "true" : "false"} title="Background in the export" onClick=${() => setOpen(!open)}>
+        <span className=${"bg-dot" + (none ? " none" : "")} style=${none ? null : { background: hex(s.bgColor) }}></span>${none ? "No background" : swatchName(s.bgColor)}<${Icon} d=${IC.chevron} size=${13} /></button>
+      ${open && html`<div className="pop-menu bg-menu" role="menu" aria-label="Background in the export">
+        <div className="menu-head">Background in the export</div>
+        <button type="button" role="menuitemradio" aria-checked=${none ? "true" : "false"} className="menu-item bg-item" onClick=${() => choose({ background: "transparent" })}><span className="bg-dot none"></span>None (transparent)</button>
+        ${SWATCHES.map((sw) => html`<button key=${sw.id} type="button" role="menuitemradio" aria-checked=${!none && s.bgColor === sw.id ? "true" : "false"} className="menu-item bg-item" onClick=${() => choose({ background: "colour", bgColor: sw.id })}><span className="bg-dot" style=${{ background: sw.hex }}></span>${sw.name}</button>`)}
+      </div>`}
+    </div>
+  </div>`;
+}
+
 /* ------------------------------------------------------------------ app */
 
 function App() {
@@ -4125,7 +4166,9 @@ function App() {
       <div className="stage-bar">
         <div className="stage-title"><strong>${T.name}</strong><span>${w} × ${h} · 25 fps · ${(t.total / FPS).toFixed(1)} s</span></div>
         <div className="stage-tools">
-          <div className="seg small" role="group" aria-label="Preview background">${[["dark", "Dark"], ["light", "Light"]].map(([id, lab]) =>
+          <${FormatTools} s=${s} set=${set} setMany=${setMany} />
+          <span className="tool-sep" aria-hidden="true"></span>
+          <div className="seg small" role="group" aria-label="Preview backdrop" title="Preview backdrop only, not exported">${[["dark", "Dark"], ["light", "Light"]].map(([id, lab]) =>
             html`<button key=${id} type="button" aria-pressed=${previewBg === id ? "true" : "false"} onClick=${() => setPreviewBg(id)}>${lab}</button>`)}</div>
           <button type="button" className="btn icon" aria-pressed=${safe ? "true" : "false"} aria-label="Safe area guides" title="Safe area guides (5% and 10%)" onClick=${() => setSafe(!safe)}><${Icon} d=${IC.safe} size=${15} /></button>
         </div>
